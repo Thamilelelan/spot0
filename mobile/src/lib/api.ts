@@ -9,7 +9,7 @@ import { supabase } from './supabase';
  *  iOS simulator only            → 'http://localhost:5000'
  * ─────────────────────────────────────────────────────────────────────────────
  */
-export const BACKEND_URL = 'https://aa0c-103-249-82-131.ngrok-free.app'; // ngrok tunnel → localhost:5000
+export const BACKEND_URL = 'https://05f3-103-249-82-131.ngrok-free.app'; // ngrok tunnel → localhost:5000
 
 // ─── Internal: build Authorization header from current Supabase session ──────
 async function authHeaders(): Promise<Record<string, string>> {
