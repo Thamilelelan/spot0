@@ -12,6 +12,7 @@ import MapScreen from '../screens/MapScreen';
 import SubmitCleanupScreen from '../screens/SubmitCleanupScreen';
 import LeaderboardScreen from '../screens/LeaderboardScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import RewardsScreen from '../screens/RewardsScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import DirtyReportScreen from '../screens/DirtyReportScreen';
 import DirtyDetailsScreen from '../screens/DirtyDetailsScreen';
@@ -30,6 +31,7 @@ export type TabParamList = {
   Map: undefined;
   Submit: undefined;
   Leaderboard: undefined;
+  Rewards: undefined;
   Profile: undefined;
 };
 
@@ -46,6 +48,7 @@ function TabNavigator() {
             Map: { active: 'map', inactive: 'map-outline' },
             Submit: { active: 'camera', inactive: 'camera-outline' },
             Leaderboard: { active: 'trophy', inactive: 'trophy-outline' },
+            Rewards: { active: 'gift', inactive: 'gift-outline' },
             Profile: { active: 'person', inactive: 'person-outline' },
           };
           const icon = icons[route.name];
@@ -81,6 +84,7 @@ function TabNavigator() {
         options={{ title: 'Submit Cleanup' }}
       />
       <Tab.Screen name="Leaderboard" component={LeaderboardScreen} options={{ title: 'Leaderboard' }} />
+      <Tab.Screen name="Rewards" component={RewardsScreen} options={{ title: 'Rewards' }} />
       <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profile' }} />
     </Tab.Navigator>
   );
