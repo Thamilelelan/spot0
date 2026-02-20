@@ -2,13 +2,14 @@ import { supabase } from './supabase';
 
 /**
  * ─── BACKEND URL ────────────────────────────────────────────────────────────
- *  Android emulator  → 'http://10.0.2.2:5000'
- *  iOS simulator     → 'http://localhost:5000'
- *  Physical device   → 'http://<your-local-ip>:5000'  (e.g. 192.168.1.x)
- *  Production/ngrok  → replace with your public URL
+ *  Same WiFi (Expo Go real phone) → 'http://YOUR_LAPTOP_IP:5000'
+ *    Run `ipconfig` → find IPv4 under Wi-Fi adapter, e.g. 192.168.1.45
+ *  ngrok (any network)           → 'https://xxxx.ngrok-free.app'
+ *  Android emulator only         → 'http://10.0.2.2:5000'
+ *  iOS simulator only            → 'http://localhost:5000'
  * ─────────────────────────────────────────────────────────────────────────────
  */
-export const BACKEND_URL = 'http://10.0.2.2:5000';
+export const BACKEND_URL = 'https://aa0c-103-249-82-131.ngrok-free.app'; // ngrok tunnel → localhost:5000
 
 // ─── Internal: build Authorization header from current Supabase session ──────
 async function authHeaders(): Promise<Record<string, string>> {
