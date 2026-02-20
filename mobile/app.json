@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "City Cleanliness",
+    "slug": "city-cleanliness",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.kcghackathon.citycleanliness",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Required to capture before and after cleanup photos.",
+        "NSLocationWhenInUseUsageDescription": "Required to record GPS coordinates at photo capture time.",
+        "NSLocationAlwaysUsageDescription": "Required to record GPS coordinates for cleanup verification."
+      }
+    },
+    "android": {
+      "package": "com.kcghackathon.citycleanliness",
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
+      ]
+    },
+    "web": {},
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Required to capture cleanup photos. Gallery access is intentionally disabled."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Required to verify cleanup location."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#22c55e"
+        }
+      ]
+    ]
+  }
+}

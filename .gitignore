@@ -1,0 +1,46 @@
+# ─── Node ────────────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─── Expo / React Native ──────────────────────────────────────────────────────
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Android
+mobile/android/
+mobile/.gradle/
+
+# iOS
+mobile/ios/
+mobile/*.xcworkspace
+mobile/*.xcodeproj
+
+# ─── Supabase ─────────────────────────────────────────────────────────────────
+# Do NOT commit your access token or service role key
+mobile/supabase/.branches/
+mobile/supabase/.temp/
+mobile/supabase/functions/.env
+.supabase/
+
+# ─── Environment / Secrets ───────────────────────────────────────────────────
+.env
+.env.local
+.env*.local
+*.env
+
+# ─── Editor ──────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ─── Logs / Build artefacts ──────────────────────────────────────────────────
+*.log
+*.tsbuildinfo
+coverage/
