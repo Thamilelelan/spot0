@@ -15,8 +15,11 @@ import * as Location from 'expo-location';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Crypto from 'expo-crypto';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { useRoute } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { haversineKm } from '../lib/haversine';
+import { Drive } from '../types';
 
 type Step = 'intro' | 'camera_before' | 'preview_before' | 'cleaning' | 'camera_after' | 'preview_after' | 'submitting' | 'done';
 
@@ -24,6 +27,13 @@ const ROUND_TO_GRID = (val: number) => Math.round(val * 5000) / 5000; // ~22m gr
 
 export default function SubmitCleanupScreen() {
   const { user, refreshProfile } = useAuth();
+  const route = useRoute();
+  // When navigated from "Clean This Spot" (CleanSpot stack screen), these are set
+  const spotParams = route.params as { locationId?: string; lat?: number; lng?: number } | undefined;
+  const presetLocationId = spotParams?.locationId ?? null;
+  const presetLat = spotParams?.lat ?? null;
+  const presetLng = spotParams?.lng ?? null;
+
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
 
@@ -106,28 +116,34 @@ export default function SubmitCleanupScreen() {
       const path = `before/${user.id}/${Date.now()}.jpg`;
       const publicUrl = await uploadImage(beforePhotoUri, 'cleanup-images', path);
 
-      // Resolve or create location using grid dedup
-      const latGrid = ROUND_TO_GRID(gps.lat);
-      const lngGrid = ROUND_TO_GRID(gps.lng);
-
       let locId: string;
-      const { data: existing } = await supabase
-        .from('locations')
-        .select('id')
-        .eq('lat_grid', latGrid)
-        .eq('lng_grid', lngGrid)
-        .maybeSingle();
 
-      if (existing) {
-        locId = existing.id;
+      if (presetLocationId) {
+        // "Clean This Spot" flow — use the pre-set location directly
+        locId = presetLocationId;
       } else {
-        const { data: newLoc, error: locErr } = await supabase
+        // Normal flow — resolve or create location using grid dedup
+        const latGrid = ROUND_TO_GRID(gps.lat);
+        const lngGrid = ROUND_TO_GRID(gps.lng);
+
+        const { data: existing } = await supabase
           .from('locations')
-          .insert({ lat: gps.lat, lng: gps.lng, lat_grid: latGrid, lng_grid: lngGrid, status: 'pending' })
           .select('id')
-          .single();
-        if (locErr || !newLoc) throw new Error('Could not create location');
-        locId = newLoc.id;
+          .eq('lat_grid', latGrid)
+          .eq('lng_grid', lngGrid)
+          .maybeSingle();
+
+        if (existing) {
+          locId = existing.id;
+        } else {
+          const { data: newLoc, error: locErr } = await supabase
+            .from('locations')
+            .insert({ lat: gps.lat, lng: gps.lng, lat_grid: latGrid, lng_grid: lngGrid, status: 'pending' })
+            .select('id')
+            .single();
+          if (locErr || !newLoc) throw new Error('Could not create location');
+          locId = newLoc.id;
+        }
       }
       setLocationId(locId);
 
@@ -202,26 +218,66 @@ export default function SubmitCleanupScreen() {
       });
       if (reportErr) throw new Error(reportErr.message);
 
-      // Award +10 points — update user totals and insert points_log entry
+      // Award points + drive bonus ─────────────────────────────────────────
       const { data: currentUser } = await supabase
         .from('users')
         .select('total_points, cleanups_done')
         .eq('id', user.id)
         .single();
       const month = new Date().toISOString().slice(0, 7);
-      await Promise.all([
+
+      // Check if within any active drive zone
+      const now2 = new Date().toISOString();
+      const { data: driveData } = await supabase
+        .from('drives')
+        .select('*')
+        .eq('status', 'active')
+        .lte('start_time', now2)
+        .gte('end_time', now2);
+      const activeDriveList = (driveData ?? []) as Drive[];
+      const matchedDrive = activeDriveList.find(
+        (d) => gps && haversineKm(gps.lat, gps.lng, d.lat, d.lng) <= d.radius_km,
+      );
+
+      const basePoints = 10;
+      const bonusPoints = matchedDrive ? (matchedDrive.points_multiplier - 1) * basePoints : 0;
+      const totalNewPoints = basePoints + bonusPoints;
+
+      const pointsOps: any[] = [
         supabase.from('users').update({
-          total_points: (currentUser?.total_points ?? 0) + 10,
+          total_points: (currentUser?.total_points ?? 0) + totalNewPoints,
           cleanups_done: (currentUser?.cleanups_done ?? 0) + 1,
         }).eq('id', user.id),
         supabase.from('points_log').insert({
           user_id: user.id,
-          points: 10,
+          points: basePoints,
           reason: 'verified_cleanup',
           location_id: locationId,
           month,
         }),
-      ]);
+      ];
+      if (matchedDrive && bonusPoints > 0) {
+        pointsOps.push(
+          supabase.from('points_log').insert({
+            user_id: user.id,
+            points: bonusPoints,
+            reason: `drive_bonus_${matchedDrive.id}`,
+            location_id: locationId,
+            month,
+          }),
+          supabase.from('user_badges').upsert(
+            {
+              user_id: user.id,
+              drive_id: matchedDrive.id,
+              badge_name: matchedDrive.badge_name,
+              badge_color: matchedDrive.badge_color,
+              badge_icon: matchedDrive.badge_icon,
+            },
+            { onConflict: 'user_id,drive_id' },
+          ),
+        );
+      }
+      await Promise.all(pointsOps);
 
       // Mark location clean
       await supabase.from('locations').update({
@@ -232,7 +288,10 @@ export default function SubmitCleanupScreen() {
       // Clean up the pending session
       await supabase.from('pending_sessions').delete().eq('id', sessionId);
 
-      setResultMessage('Cleanup verified! +10 points earned.');
+      const driveMsg = matchedDrive
+        ? ` +${bonusPoints} drive bonus! ${matchedDrive.badge_icon} "${matchedDrive.badge_name}" badge earned!`
+        : '';
+      setResultMessage(`Cleanup verified! +${basePoints} points earned.${driveMsg}`);
       await refreshProfile();
       setStep('done');
     } catch (err: any) {
@@ -287,9 +346,7 @@ export default function SubmitCleanupScreen() {
   if (step === 'done') {
     return (
       <View style={styles.center}>
-        <View style={styles.doneIconWrap}>
-          <Ionicons name="checkmark-circle" size={64} color="#16a34a" />
-        </View>
+        <Ionicons name="checkmark-circle" size={64} color="#16a34a" />
         <Text style={styles.doneTitle}>Cleanup Submitted!</Text>
         <Text style={styles.doneMsg}>{resultMessage}</Text>
         <TouchableOpacity style={styles.btn} onPress={resetFlow}>
@@ -304,9 +361,13 @@ export default function SubmitCleanupScreen() {
       {/* INTRO */}
       {step === 'intro' && (
         <>
-          <Text style={styles.title}>Start a Cleanup</Text>
+          <Text style={styles.title}>
+            {presetLocationId ? 'Clean This Spot' : 'Start a Cleanup'}
+          </Text>
           <Text style={styles.desc}>
-            Capture a BEFORE photo, clean the area, then capture an AFTER photo to earn points.
+            {presetLocationId
+              ? `You\'re cleaning a confirmed dirty location at ${presetLat?.toFixed(4)}, ${presetLng?.toFixed(4)}. Capture a BEFORE photo, clean the area, then take an AFTER photo.`
+              : 'Capture a BEFORE photo, clean the area, then capture an AFTER photo to earn points.'}
           </Text>
           <View style={styles.stepList}>
             {[

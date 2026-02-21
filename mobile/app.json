@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "City Cleanliness",
-    "slug": "city-cleanliness",
+    "name": "SpotZero",
+    "slug": "spotzero",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.kcghackathon.citycleanliness",
+      "bundleIdentifier": "com.kcghackathon.spotzero",
       "infoPlist": {
         "NSCameraUsageDescription": "Required to capture before and after cleanup photos.",
         "NSLocationWhenInUseUsageDescription": "Required to record GPS coordinates at photo capture time.",
@@ -15,7 +15,7 @@
       }
     },
     "android": {
-      "package": "com.kcghackathon.citycleanliness",
+      "package": "com.kcghackathon.spotzero",
       "permissions": [
         "CAMERA",
         "ACCESS_FINE_LOCATION",

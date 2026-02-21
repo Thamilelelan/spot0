@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -10,23 +10,24 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useTheme, ThemeColors } from '../context/ThemeContext';
 import { NotificationRow } from '../types';
 
 export default function NotificationsScreen() {
   const { user } = useAuth();
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchNotifications();
-  }, []);
+  useEffect(() => { fetchNotifications(); }, []);
 
   const fetchNotifications = async () => {
     if (!user) return;
     setLoading(true);
     const { data } = await supabase
-      .from('notifications')
-      .select('*')
+      .from('notifications').select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
     if (data) setNotifications(data as NotificationRow[]);
@@ -40,60 +41,73 @@ export default function NotificationsScreen() {
 
   const markAllRead = async () => {
     if (!user) return;
-    await supabase.from('notifications').update({ read: true }).eq('user_id', user.id).eq('read', false);
+    await supabase.from('notifications').update({ read: true })
+      .eq('user_id', user.id).eq('read', false);
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#16a34a" />
+      <View style={s.center}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
-
   return (
-    <View style={styles.container}>
+    <View style={s.container}>
+      {/* Header strip */}
       {unreadCount > 0 && (
-        <TouchableOpacity style={styles.markAllBtn} onPress={markAllRead}>
-          <Text style={styles.markAllText}>Mark all read ({unreadCount})</Text>
-        </TouchableOpacity>
+        <View style={s.topBar}>
+          <Text style={s.topBarLabel}>{unreadCount} unread</Text>
+          <TouchableOpacity style={s.markAllBtn} onPress={markAllRead} activeOpacity={0.7}>
+            <Ionicons name="checkmark-done-outline" size={14} color={colors.primary} />
+            <Text style={s.markAllText}>Mark all read</Text>
+          </TouchableOpacity>
+        </View>
       )}
+
       {notifications.length === 0 ? (
-        <View style={styles.center}>
-          <Ionicons name="notifications-off-outline" size={48} color="#d1d5db" />
-          <Text style={styles.empty}>No notifications yet.</Text>
+        <View style={s.center}>
+          <View style={s.emptyIconWrap}>
+            <Ionicons name="notifications-off-outline" size={36} color={colors.textMuted} />
+          </View>
+          <Text style={s.emptyTitle}>No notifications yet</Text>
+          <Text style={s.emptySub}>You'll see alerts here when your area status changes.</Text>
         </View>
       ) : (
         <FlatList
           data={notifications}
           keyExtractor={(n) => n.id}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={s.list}
+          showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
             <TouchableOpacity
-              style={[styles.card, !item.read && styles.cardUnread]}
+              style={[s.card, !item.read && s.cardUnread]}
               onPress={() => !item.read && markRead(item.id)}
               activeOpacity={0.7}
             >
-              <View style={styles.iconWrap}>
+              <View style={[s.iconWrap, item.read ? s.iconWrapRead : s.iconWrapUnread]}>
                 <Ionicons
                   name={item.read ? 'notifications-outline' : 'notifications'}
-                  size={22}
-                  color={item.read ? '#9ca3af' : '#16a34a'}
+                  size={20}
+                  color={item.read ? colors.textMuted : colors.primary}
                 />
               </View>
-              <View style={styles.textWrap}>
-                <Text style={[styles.msg, !item.read && styles.msgUnread]}>{item.message}</Text>
-                <Text style={styles.time}>
+              <View style={s.textWrap}>
+                <Text style={[s.msg, !item.read && s.msgUnread]} numberOfLines={3}>
+                  {item.message}
+                </Text>
+                <Text style={s.time}>
                   {new Date(item.created_at).toLocaleString(undefined, {
                     dateStyle: 'medium',
                     timeStyle: 'short',
                   })}
                 </Text>
               </View>
-              {!item.read && <View style={styles.dot} />}
+              {!item.read && <View style={s.unreadDot} />}
             </TouchableOpacity>
           )}
         />
@@ -102,35 +116,86 @@ export default function NotificationsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0fdf4' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
-  markAllBtn: {
-    padding: 12,
-    paddingHorizontal: 20,
-    backgroundColor: '#dcfce7',
-    alignItems: 'flex-end',
-  },
-  markAllText: { color: '#16a34a', fontWeight: '600', fontSize: 13 },
-  list: { padding: 14, gap: 8 },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 14,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
-    gap: 12,
-  },
-  cardUnread: { borderLeftWidth: 3, borderLeftColor: '#16a34a' },
-  iconWrap: { paddingTop: 2 },
-  textWrap: { flex: 1 },
-  msg: { fontSize: 14, color: '#374151', lineHeight: 19 },
-  msgUnread: { fontWeight: '600', color: '#111827' },
-  time: { fontSize: 11, color: '#9ca3af', marginTop: 4 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#16a34a', marginTop: 6 },
-  empty: { color: '#9ca3af', fontSize: 15, marginTop: 8 },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.bg },
+    center: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: c.bg,
+      padding: 32,
+      gap: 8,
+    },
+    topBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: c.borderFaint,
+      backgroundColor: c.card,
+    },
+    topBarLabel: { fontSize: 13, color: c.textMuted, fontWeight: '500' },
+    markAllBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: c.primaryLight,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 20,
+    },
+    markAllText: { color: c.primary, fontWeight: '600', fontSize: 12 },
+    emptyIconWrap: {
+      width: 72,
+      height: 72,
+      borderRadius: 36,
+      backgroundColor: c.cardAlt,
+      borderWidth: 1,
+      borderColor: c.border,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 4,
+    },
+    emptyTitle: { fontSize: 17, fontWeight: '700', color: c.text },
+    emptySub: { fontSize: 13, color: c.textSub, textAlign: 'center', lineHeight: 19 },
+    list: { padding: 14, gap: 8, paddingBottom: 24 },
+    card: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      backgroundColor: c.card,
+      borderRadius: 14,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: c.border,
+      gap: 12,
+    },
+    cardUnread: {
+      borderLeftWidth: 3,
+      borderLeftColor: c.primary,
+      backgroundColor: c.card,
+    },
+    iconWrap: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    iconWrapUnread: { backgroundColor: c.primaryLight },
+    iconWrapRead: { backgroundColor: c.cardAlt },
+    textWrap: { flex: 1 },
+    msg: { fontSize: 14, color: c.textSub, lineHeight: 20 },
+    msgUnread: { fontWeight: '600', color: c.text },
+    time: { fontSize: 11, color: c.textMuted, marginTop: 5 },
+    unreadDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: c.primary,
+      marginTop: 4,
+    },
+  });
+}

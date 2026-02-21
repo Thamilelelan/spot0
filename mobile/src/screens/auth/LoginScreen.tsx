@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,8 +13,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
+import { useTheme, ThemeColors } from '../../context/ThemeContext';
 
 export default function LoginScreen() {
+  const { colors, isDark } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [step, setStep] = useState<'email' | 'otp'>('email');
@@ -22,10 +26,7 @@ export default function LoginScreen() {
   const otpRef = useRef<TextInput>(null);
 
   const sendOtp = async () => {
-    if (!email.trim()) {
-      Alert.alert('Error', 'Please enter your email.');
-      return;
-    }
+    if (!email.trim()) { Alert.alert('Error', 'Please enter your email.'); return; }
     setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithOtp({
@@ -37,16 +38,11 @@ export default function LoginScreen() {
       setTimeout(() => otpRef.current?.focus(), 300);
     } catch (err: any) {
       Alert.alert('Error', err.message);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const verifyOtp = async () => {
-    if (otp.length !== 8) {
-      Alert.alert('Error', 'Enter the 8-digit code from your email.');
-      return;
-    }
+    if (otp.length !== 8) { Alert.alert('Error', 'Enter the 8-digit code from your email.'); return; }
     setLoading(true);
     try {
       const { error } = await supabase.auth.verifyOtp({
@@ -55,41 +51,38 @@ export default function LoginScreen() {
         type: 'email',
       });
       if (error) throw error;
-      // AuthContext will detect the session and navigate automatically
     } catch (err: any) {
       Alert.alert('Invalid code', err.message);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={s.safe}>
       <KeyboardAvoidingView
-        style={styles.container}
+        style={s.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        {/* Brand mark */}
-        <View style={styles.brand}>
-          <View style={styles.brandIcon}>
-            <Ionicons name="leaf" size={32} color="#16a34a" />
+        {/* Brand */}
+        <View style={s.brand}>
+          <View style={s.brandIcon}>
+            <Ionicons name="leaf" size={34} color={colors.primary} />
           </View>
-          <Text style={styles.brandName}>CityClean</Text>
-          <Text style={styles.brandTagline}>Verify your civic impact</Text>
+          <Text style={s.brandName}>SpotZero</Text>
+          <Text style={s.brandTagline}>Zero dirt. Full credit.</Text>
         </View>
 
         {/* Card */}
-        <View style={styles.card}>
+        <View style={s.card}>
           {step === 'email' ? (
             <>
-              <Text style={styles.cardTitle}>Sign in</Text>
-              <Text style={styles.cardSub}>Enter your email to receive a one-time code</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="mail-outline" size={18} color="#94a3b8" style={styles.inputIcon} />
+              <Text style={s.cardTitle}>Welcome back</Text>
+              <Text style={s.cardSub}>Enter your email to receive a one-time sign-in code</Text>
+              <View style={s.inputWrapper}>
+                <Ionicons name="mail-outline" size={18} color={colors.textMuted} style={s.inputIcon} />
                 <TextInput
-                  style={styles.input}
+                  style={s.input}
                   placeholder="you@example.com"
-                  placeholderTextColor="#94a3b8"
+                  placeholderTextColor={colors.textMuted}
                   value={email}
                   onChangeText={setEmail}
                   autoCapitalize="none"
@@ -100,30 +93,28 @@ export default function LoginScreen() {
                 />
               </View>
               <TouchableOpacity
-                style={[styles.btn, loading && styles.btnDisabled]}
+                style={[s.btn, loading && s.btnDisabled]}
                 onPress={sendOtp}
                 disabled={loading}
                 activeOpacity={0.8}
               >
-                {loading ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={styles.btnText}>Send Code</Text>
-                )}
+                {loading
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={s.btnText}>Send Code</Text>}
               </TouchableOpacity>
             </>
           ) : (
             <>
-              <Text style={styles.cardTitle}>Check your email</Text>
-              <Text style={styles.cardSub}>
+              <Text style={s.cardTitle}>Check your email</Text>
+              <Text style={s.cardSub}>
                 We sent an 8-digit code to{' '}
-                <Text style={styles.emailHighlight}>{email}</Text>
+                <Text style={s.emailHighlight}>{email}</Text>
               </Text>
               <TextInput
                 ref={otpRef}
-                style={styles.otpInput}
+                style={s.otpInput}
                 placeholder="00000000"
-                placeholderTextColor="#cbd5e1"
+                placeholderTextColor={colors.textMuted}
                 value={otp}
                 onChangeText={setOtp}
                 keyboardType="number-pad"
@@ -132,102 +123,113 @@ export default function LoginScreen() {
                 onSubmitEditing={verifyOtp}
               />
               <TouchableOpacity
-                style={[styles.btn, loading && styles.btnDisabled]}
+                style={[s.btn, loading && s.btnDisabled]}
                 onPress={verifyOtp}
                 disabled={loading}
                 activeOpacity={0.8}
               >
-                {loading ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={styles.btnText}>Verify & Continue</Text>
-                )}
+                {loading
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={s.btnText}>Verify & Continue</Text>}
               </TouchableOpacity>
-              <View style={styles.secondaryRow}>
+              <View style={s.secondaryRow}>
                 <TouchableOpacity onPress={() => { setStep('email'); setOtp(''); }}>
-                  <Text style={styles.secondaryLink}>Change email</Text>
+                  <Text style={s.secondaryLink}>Change email</Text>
                 </TouchableOpacity>
-                <Text style={styles.dot}>·</Text>
+                <Text style={s.dot}>·</Text>
                 <TouchableOpacity onPress={sendOtp} disabled={loading}>
-                  <Text style={styles.secondaryLink}>Resend code</Text>
+                  <Text style={s.secondaryLink}>Resend code</Text>
                 </TouchableOpacity>
               </View>
             </>
           )}
         </View>
+
+        <Text style={s.footer}>
+          By continuing you agree to our{' '}
+          <Text style={s.footerLink}>Terms of Service</Text>
+        </Text>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f8fafc' },
-  container: { flex: 1, justifyContent: 'center', paddingHorizontal: 24 },
-  brand: { alignItems: 'center', marginBottom: 32 },
-  brandIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
-    backgroundColor: '#dcfce7',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  brandName: { fontSize: 26, fontWeight: '700', color: '#0f172a', letterSpacing: -0.5 },
-  brandTagline: { fontSize: 13, color: '#64748b', marginTop: 3 },
-  card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    elevation: 3,
-  },
-  cardTitle: { fontSize: 20, fontWeight: '700', color: '#0f172a', marginBottom: 4 },
-  cardSub: { fontSize: 13, color: '#64748b', marginBottom: 20, lineHeight: 18 },
-  emailHighlight: { color: '#16a34a', fontWeight: '600' },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    backgroundColor: '#f8fafc',
-    paddingHorizontal: 12,
-    marginBottom: 14,
-  },
-  inputIcon: { marginRight: 8 },
-  input: { flex: 1, fontSize: 15, color: '#0f172a', paddingVertical: 13 },
-  otpInput: {
-    borderWidth: 1.5,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    backgroundColor: '#f8fafc',
-    fontSize: 30,
-    fontWeight: '700',
-    letterSpacing: 10,
-    textAlign: 'center',
-    paddingVertical: 14,
-    color: '#0f172a',
-    marginBottom: 14,
-  },
-  btn: {
-    backgroundColor: '#16a34a',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  btnDisabled: { opacity: 0.6 },
-  btnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  secondaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 16,
-    gap: 8,
-  },
-  secondaryLink: { color: '#16a34a', fontSize: 13, fontWeight: '500' },
-  dot: { color: '#cbd5e1', fontSize: 13 },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: c.bg },
+    container: { flex: 1, justifyContent: 'center', paddingHorizontal: 24 },
+    brand: { alignItems: 'center', marginBottom: 36 },
+    brandIcon: {
+      width: 68,
+      height: 68,
+      borderRadius: 20,
+      backgroundColor: c.primaryLight,
+      borderWidth: 1,
+      borderColor: c.primaryMid,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 14,
+    },
+    brandName: { fontSize: 28, fontWeight: '800', color: c.text, letterSpacing: -0.5 },
+    brandTagline: { fontSize: 13, color: c.textSub, marginTop: 4, fontWeight: '500' },
+    card: {
+      backgroundColor: c.card,
+      borderRadius: 20,
+      padding: 24,
+      borderWidth: 1,
+      borderColor: c.border,
+      shadowColor: c.shadow,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.08,
+      shadowRadius: 20,
+      elevation: 4,
+    },
+    cardTitle: { fontSize: 20, fontWeight: '700', color: c.text, marginBottom: 4 },
+    cardSub: { fontSize: 13, color: c.textSub, marginBottom: 20, lineHeight: 19 },
+    emailHighlight: { color: c.primary, fontWeight: '600' },
+    inputWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1.5,
+      borderColor: c.inputBorder,
+      borderRadius: 12,
+      backgroundColor: c.inputBg,
+      paddingHorizontal: 12,
+      marginBottom: 14,
+    },
+    inputIcon: { marginRight: 8 },
+    input: { flex: 1, fontSize: 15, color: c.text, paddingVertical: 13 },
+    otpInput: {
+      borderWidth: 1.5,
+      borderColor: c.inputBorder,
+      borderRadius: 12,
+      backgroundColor: c.inputBg,
+      fontSize: 28,
+      fontWeight: '800',
+      letterSpacing: 10,
+      textAlign: 'center',
+      paddingVertical: 14,
+      color: c.text,
+      marginBottom: 14,
+    },
+    btn: {
+      backgroundColor: c.primary,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    btnDisabled: { opacity: 0.55 },
+    btnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+    secondaryRow: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginTop: 16,
+      gap: 8,
+    },
+    secondaryLink: { color: c.primary, fontSize: 13, fontWeight: '600' },
+    dot: { color: c.textMuted, fontSize: 16 },
+    footer: { textAlign: 'center', color: c.textMuted, fontSize: 11, marginTop: 28 },
+    footerLink: { color: c.textSub, textDecorationLine: 'underline' },
+  });
+}

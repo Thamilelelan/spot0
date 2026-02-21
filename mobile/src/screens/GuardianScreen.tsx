@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,46 +6,65 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  ScrollView,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useTheme, ThemeColors } from '../context/ThemeContext';
 
 type RouteParams = { locationId: string };
+
+interface GuardianUser {
+  user_id: string;
+  name: string;
+  avatar: string | null;
+  subscribed_at: string;
+}
 
 export default function GuardianScreen() {
   const route = useRoute();
   const navigation = useNavigation();
   const { user } = useAuth();
   const { locationId } = route.params as RouteParams;
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
   const [isGuardian, setIsGuardian] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [guardianCount, setGuardianCount] = useState(0);
+  const [guardianSlots, setGuardianSlots] = useState(3);
+  const [guardianList, setGuardianList] = useState<GuardianUser[]>([]);
 
-  useEffect(() => {
-    checkGuardianStatus();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
-  const checkGuardianStatus = async () => {
+  const fetchData = async () => {
     if (!user) return;
     setLoading(true);
-    const [mine, all] = await Promise.all([
-      supabase
-        .from('guardians')
-        .select('id')
-        .eq('user_id', user.id)
+    const [locRes, guardRes] = await Promise.all([
+      supabase.from('locations').select('guardian_slots').eq('id', locationId).single(),
+      supabase.from('guardians')
+        .select('user_id, subscribed_at, users(name, avatar)')
         .eq('location_id', locationId)
-        .maybeSingle(),
-      supabase
-        .from('guardians')
-        .select('id', { count: 'exact', head: true })
-        .eq('location_id', locationId),
+        .order('subscribed_at', { ascending: true }),
     ]);
-    setIsGuardian(!!mine.data);
-    setGuardianCount(all.count ?? 0);
+
+    if (locRes.data) setGuardianSlots(locRes.data.guardian_slots ?? 3);
+
+    if (guardRes.data) {
+      const list: GuardianUser[] = (guardRes.data as any[]).map((g) => ({
+        user_id: g.user_id,
+        name: g.users?.name ?? 'Volunteer',
+        avatar: g.users?.avatar ?? null,
+        subscribed_at: g.subscribed_at,
+      }));
+      setGuardianList(list);
+      setGuardianCount(list.length);
+      setIsGuardian(list.some((g) => g.user_id === user.id));
+    }
     setLoading(false);
   };
 
@@ -54,78 +73,103 @@ export default function GuardianScreen() {
     setSaving(true);
     try {
       if (isGuardian) {
-        const { error } = await supabase
-          .from('guardians')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('location_id', locationId);
+        const { error } = await supabase.from('guardians').delete()
+          .eq('user_id', user.id).eq('location_id', locationId);
         if (error) throw error;
         setIsGuardian(false);
+        setGuardianList((prev) => prev.filter((g) => g.user_id !== user.id));
         setGuardianCount((c) => Math.max(0, c - 1));
         Alert.alert('Unsubscribed', 'You are no longer a Guardian for this location.');
       } else {
-        const { error } = await supabase
-          .from('guardians')
+        if (guardianCount >= guardianSlots) {
+          Alert.alert('Slots full', `This location has reached its limit of ${guardianSlots} guardians.`);
+          return;
+        }
+        const { error } = await supabase.from('guardians')
           .insert({ user_id: user.id, location_id: locationId });
         if (error) throw error;
         setIsGuardian(true);
+        const { data: me } = await supabase.from('users').select('name, avatar').eq('id', user.id).single();
+        setGuardianList((prev) => [
+          ...prev,
+          { user_id: user.id, name: (me as any)?.name ?? 'You', avatar: (me as any)?.avatar ?? null, subscribed_at: new Date().toISOString() },
+        ]);
         setGuardianCount((c) => c + 1);
-        Alert.alert('Subscribed! 🛡️', 'You will be notified if this area becomes dirty again.');
+        Alert.alert('Subscribed!', 'You will be notified whenever this area becomes dirty again.');
       }
     } catch (err: any) {
       Alert.alert('Error', err.message);
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#16a34a" />
+      <View style={s.center}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
+  const slotsFull = guardianCount >= guardianSlots;
+  const filledFraction = Math.min(guardianCount / guardianSlots, 1);
+
   return (
-    <View style={styles.container}>
-      {/* Hero icon */}
-      <View style={styles.hero}>
-        <Text style={styles.heroIcon}>🛡️</Text>
-        <Text style={styles.heroTitle}>Guardian Mode</Text>
-        <Text style={styles.heroSub}>
+    <ScrollView style={s.scroll} contentContainerStyle={s.container} showsVerticalScrollIndicator={false}>
+      {/* Hero */}
+      <View style={s.hero}>
+        <View style={s.heroIconRing}>
+          <Ionicons name="shield" size={40} color={colors.primary} />
+        </View>
+        <Text style={s.heroTitle}>Guardian Mode</Text>
+        <Text style={s.heroSub}>
           Subscribe to this location and get notified whenever it becomes dirty again.
         </Text>
       </View>
 
-      {/* Info card */}
-      <View style={styles.infoCard}>
-        <View style={styles.infoRow}>
-          <Ionicons name="people-outline" size={18} color="#16a34a" />
-          <Text style={styles.infoText}>{guardianCount} guardian{guardianCount !== 1 ? 's' : ''} watching this spot</Text>
+      {/* Slot progress */}
+      <View style={[s.slotCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={s.slotHeader}>
+          <Text style={[s.slotLabel, { color: colors.text }]}>Guardian Slots</Text>
+          <Text style={[s.slotCount, { color: slotsFull ? colors.danger : colors.primary }]}>
+            {guardianCount} / {guardianSlots}
+          </Text>
         </View>
-        <View style={styles.infoRow}>
-          <Ionicons name="notifications-outline" size={18} color="#16a34a" />
-          <Text style={styles.infoText}>Push notification when status → Red</Text>
+        <View style={[s.progressTrack, { backgroundColor: colors.borderFaint }]}>
+          <View
+            style={[
+              s.progressFill,
+              {
+                width: `${filledFraction * 100}%` as any,
+                backgroundColor: slotsFull ? colors.danger : colors.primary,
+              },
+            ]}
+          />
         </View>
-        <View style={styles.infoRow}>
-          <Ionicons name="information-circle-outline" size={18} color="#16a34a" />
-          <Text style={styles.infoText}>No obligation to clean every time</Text>
-        </View>
+        <Text style={[s.slotSub, { color: colors.textMuted }]}>
+          {slotsFull
+            ? 'All guardian slots are filled for this location'
+            : `${guardianSlots - guardianCount} slot${guardianSlots - guardianCount !== 1 ? 's' : ''} still available`}
+        </Text>
       </View>
 
-      {/* Status */}
-      <View style={[styles.statusBadge, { backgroundColor: isGuardian ? '#dcfce7' : '#f3f4f6' }]}>
-        <Text style={[styles.statusText, { color: isGuardian ? '#16a34a' : '#6b7280' }]}>
-          {isGuardian ? '✅ You are a Guardian for this location' : '⬜ You are not subscribed yet'}
+      {/* Status chip */}
+      <View style={[s.statusChip, isGuardian ? s.chipActive : s.chipInactive]}>
+        <Ionicons
+          name={isGuardian ? 'shield-checkmark' : 'shield-outline'}
+          size={16}
+          color={isGuardian ? colors.primary : colors.textMuted}
+        />
+        <Text style={[s.chipText, { color: isGuardian ? colors.primary : colors.textMuted }]}>
+          {isGuardian ? 'You are a Guardian for this location' : 'Not subscribed yet'}
         </Text>
       </View>
 
       {/* Toggle button */}
       <TouchableOpacity
-        style={[styles.btn, isGuardian ? styles.btnUnsubscribe : styles.btnSubscribe]}
+        style={[s.btn, isGuardian ? s.btnDanger : slotsFull ? s.btnDisabled : s.btnPrimary]}
         onPress={toggleGuardian}
-        disabled={saving}
+        disabled={saving || (slotsFull && !isGuardian)}
+        activeOpacity={0.85}
       >
         {saving ? (
           <ActivityIndicator color="#fff" />
@@ -133,62 +177,190 @@ export default function GuardianScreen() {
           <>
             <Ionicons
               name={isGuardian ? 'shield-checkmark-outline' : 'shield-outline'}
-              size={20}
+              size={19}
               color="#fff"
-              style={{ marginRight: 8 }}
             />
-            <Text style={styles.btnText}>
-              {isGuardian ? 'Unsubscribe as Guardian' : 'Become a Guardian'}
+            <Text style={s.btnText}>
+              {isGuardian ? 'Unsubscribe as Guardian' : slotsFull ? 'Slots Full' : 'Become a Guardian'}
             </Text>
           </>
         )}
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-        <Text style={styles.backText}>← Back to Map</Text>
+      {/* Guardian list */}
+      {guardianList.length > 0 && (
+        <View style={[s.listCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[s.listTitle, { color: colors.text }]}>Current Guardians</Text>
+          {guardianList.map((g, i) => (
+            <View key={g.user_id} style={[s.listRow, i < guardianList.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.borderFaint }]}>
+              {g.avatar
+                ? <Image source={{ uri: g.avatar }} style={s.listAvatar} />
+                : <View style={[s.listAvatarFallback, { backgroundColor: colors.primaryLight }]}>
+                    <Text style={[s.listAvatarInitial, { color: colors.primary }]}>{g.name.charAt(0).toUpperCase()}</Text>
+                  </View>}
+              <View style={{ flex: 1 }}>
+                <Text style={[s.listName, { color: colors.text }]}>
+                  {g.name}{g.user_id === user?.id ? ' (you)' : ''}
+                </Text>
+                <Text style={[s.listSub, { color: colors.textMuted }]}>
+                  Since {new Date(g.subscribed_at).toLocaleDateString()}
+                </Text>
+              </View>
+              <Ionicons name="shield-checkmark" size={16} color={colors.primary} />
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Info rows */}
+      <View style={[s.featureCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        {[
+          { icon: 'notifications-outline', text: 'Push notification when status changes to dirty' },
+          { icon: 'shield-checkmark-outline', text: 'No obligation — just stay informed' },
+        ].map((f, i) => (
+          <View key={i} style={[s.featureRow, i === 0 && { borderBottomWidth: 1, borderBottomColor: colors.borderFaint }]}>
+            <View style={[s.featureIconWrap, { backgroundColor: colors.primaryLight }]}>
+              <Ionicons name={f.icon as any} size={18} color={colors.primary} />
+            </View>
+            <Text style={[s.featureText, { color: colors.textSub }]}>{f.text}</Text>
+          </View>
+        ))}
+      </View>
+
+      <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
+        <Ionicons name="arrow-back-outline" size={14} color={colors.primary} />
+        <Text style={[s.backText, { color: colors.primary }]}>Back to Map</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0fdf4', padding: 24 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  hero: { alignItems: 'center', marginBottom: 28 },
-  heroIcon: { fontSize: 56 },
-  heroTitle: { fontSize: 24, fontWeight: '800', color: '#111827', marginTop: 8 },
-  heroSub: { fontSize: 14, color: '#6b7280', textAlign: 'center', marginTop: 6, lineHeight: 20 },
-  infoCard: {
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    padding: 18,
-    gap: 14,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  infoText: { fontSize: 14, color: '#374151', flex: 1 },
-  statusBadge: {
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  statusText: { fontWeight: '600', fontSize: 14 },
-  btn: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  btnSubscribe: { backgroundColor: '#16a34a' },
-  btnUnsubscribe: { backgroundColor: '#ef4444' },
-  btnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
-  backBtn: { alignItems: 'center', paddingVertical: 8 },
-  backText: { color: '#16a34a', fontWeight: '600', fontSize: 14 },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    scroll: { flex: 1, backgroundColor: c.bg },
+    container: { padding: 24, paddingBottom: 40 },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: c.bg },
+    hero: { alignItems: 'center', marginBottom: 22 },
+    heroIconRing: {
+      width: 80,
+      height: 80,
+      borderRadius: 40,
+      backgroundColor: c.primaryLight,
+      borderWidth: 2,
+      borderColor: c.primaryMid,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    heroTitle: { fontSize: 24, fontWeight: '800', color: c.text },
+    heroSub: {
+      fontSize: 14,
+      color: c.textSub,
+      textAlign: 'center',
+      marginTop: 6,
+      lineHeight: 20,
+      maxWidth: 280,
+    },
+    slotCard: {
+      borderRadius: 16,
+      borderWidth: 1,
+      padding: 16,
+      marginBottom: 14,
+    },
+    slotHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+    slotLabel: { fontSize: 14, fontWeight: '700' },
+    slotCount: { fontSize: 15, fontWeight: '800' },
+    progressTrack: {
+      height: 8,
+      borderRadius: 4,
+      overflow: 'hidden',
+      marginBottom: 8,
+    },
+    progressFill: { height: 8, borderRadius: 4 },
+    slotSub: { fontSize: 12 },
+    featureCard: {
+      borderRadius: 16,
+      borderWidth: 1,
+      marginBottom: 14,
+      overflow: 'hidden',
+    },
+    featureRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 14,
+      gap: 12,
+    },
+    featureIconWrap: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    featureText: { flex: 1, fontSize: 14, lineHeight: 19 },
+    statusChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 14,
+      borderWidth: 1,
+    },
+    chipActive: {
+      backgroundColor: c.primaryLight,
+      borderColor: c.primaryMid,
+    },
+    chipInactive: {
+      backgroundColor: c.cardAlt,
+      borderColor: c.border,
+    },
+    chipText: { fontWeight: '600', fontSize: 14 },
+    btn: {
+      borderRadius: 13,
+      paddingVertical: 15,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 16,
+    },
+    btnPrimary: { backgroundColor: c.primary },
+    btnDanger: { backgroundColor: c.danger },
+    btnDisabled: { backgroundColor: c.textMuted },
+    btnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+    listCard: {
+      borderRadius: 16,
+      borderWidth: 1,
+      marginBottom: 14,
+      overflow: 'hidden',
+    },
+    listTitle: { fontSize: 14, fontWeight: '700', padding: 14, paddingBottom: 10 },
+    listRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      gap: 10,
+    },
+    listAvatar: { width: 36, height: 36, borderRadius: 18 },
+    listAvatarFallback: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    listAvatarInitial: { fontSize: 16, fontWeight: '700' },
+    listName: { fontSize: 14, fontWeight: '600' },
+    listSub: { fontSize: 11, marginTop: 1 },
+    backBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 8,
+      gap: 5,
+    },
+    backText: { fontWeight: '600', fontSize: 14 },
+  });
+}

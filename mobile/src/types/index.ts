@@ -8,6 +8,7 @@ export interface UserRow {
   avatar: string | null;
   total_points: number;
   cleanups_done: number;
+  total_karma: number;
   expo_push_token: string | null;
 }
 
@@ -19,6 +20,34 @@ export interface LocationRow {
   lng_grid: number;
   status: LocationStatus;
   last_cleaned_at: string | null;
+  guardian_slots: number; // max guardians allowed (default 3)
+}
+
+export interface Drive {
+  id: string;
+  title: string;
+  description: string | null;
+  lat: number;
+  lng: number;
+  radius_km: number;
+  start_time: string;
+  end_time: string;
+  badge_name: string;
+  badge_color: string;
+  badge_icon: string;
+  points_multiplier: number;
+  status: 'active' | 'ended' | 'cancelled';
+  created_at: string;
+}
+
+export interface UserBadge {
+  id: string;
+  user_id: string;
+  drive_id: string;
+  badge_name: string;
+  badge_color: string;
+  badge_icon: string;
+  awarded_at: string;
 }
 
 export interface PendingSession {
